@@ -3,10 +3,14 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 5000;
-app.use(cors());
+
+app.use(cors({
+    origin: [
+        'http://localhost:5173'],
+    credentials: true
+}));
 app.use(express.json());
-// db_user = 
-// db_pw = 
+
 const { MongoClient, ServerApiVersion } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.oo5u4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -23,6 +27,23 @@ async function run() {
     // await client.connect();
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
+
+    const postCollection = client.db('Recoverly').collection("posts");
+
+    // posts api
+    app.post('/posts', async (req, res) => {
+        const newPost = req.body;
+        console.log('Adding new post', newPost)
+  
+        const result = await postCollection.insertOne(newPost);
+        res.send(result);
+      });
+  
+      app.get('/posts', async (req, res) => {
+        const cursor = postCollection.find();
+        const result = await cursor.toArray();
+        res.send(result);
+      });
 
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
