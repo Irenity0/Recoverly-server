@@ -29,6 +29,7 @@ async function run() {
     // await client.db("admin").command({ ping: 1 });
 
     const postCollection = client.db('Recoverly').collection("posts");
+    const userCollection = client.db('Recoverly').collection("users");
 
     // posts api
     app.post('/posts', async (req, res) => {
@@ -43,6 +44,27 @@ async function run() {
         const cursor = postCollection.find();
         const result = await cursor.toArray();
         res.send(result);
+      });
+
+    //  user apis
+    app.post('/users', async (req, res) => {
+        const newUser = req.body;
+        console.log('creating new user', newUser);
+        const result = await userCollection.insertOne(newUser);
+        res.send(result);
+      });
+  
+      app.get('/users', async (req, res) => {
+        const cursor = userCollection.find();
+        const result = await cursor.toArray();
+        res.send(result);
+      });
+
+      app.get('/users/:email', async (req, res) => {
+        const email = req.params.email;
+        const query = { email: email };
+        const user = await userCollection.findOne(query);
+        res.send(user);
       });
 
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
