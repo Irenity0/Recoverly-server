@@ -7,7 +7,7 @@ const port = process.env.PORT || 5000;
 
 app.use(cors({
     origin: [
-        'http://localhost:5173'],
+        'http://localhost:5173', 'https://recoverly-e17ce.web.app/', 'https://recoverly-e17ce.firebaseapp.com/'],
     credentials: true
 }));
 app.use(express.json());
@@ -31,6 +31,23 @@ async function run() {
 
     const postCollection = client.db('Recoverly').collection("posts");
     const userCollection = client.db('Recoverly').collection("users");
+    const recoveryCollection = client.db('Recoverly').collection("recoveries");
+
+    // recoveries api
+    app.post('/recoveries', async (req, res) => {
+      const newRecovery = req.body;
+      console.log('Adding new post', newRecovery)
+
+      const result = await recoveryCollection.insertOne(newRecovery);
+      res.send(result);
+    });
+
+    app.get('/recoveries', async (req, res) => {
+      const cursor = recoveryCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
 
     // posts api
     app.post('/posts', async (req, res) => {
