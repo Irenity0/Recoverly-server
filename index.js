@@ -92,6 +92,21 @@ async function run() {
         res.send(result);
       });
 
+      app.get('/posts/latest', async (req, res) => {
+        const limit = parseInt(req.query.limit) || 6; // Default to 6 posts
+        const sortOption = { date: -1 }; // Sort by most recent
+      
+        try {
+          const cursor = postCollection.find().sort(sortOption).limit(limit);
+          const result = await cursor.toArray();
+          res.send(result);
+        } catch (error) {
+          console.error("Error fetching latest posts:", error);
+          res.status(500).send({ error: "Internal Server Error" });
+        }
+      });
+      
+
     //  user apis
     app.post('/users', async (req, res) => {
         const newUser = req.body;
