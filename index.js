@@ -85,6 +85,28 @@ async function run() {
         }
       });
 
+      app.patch('/posts/:id', async (req, res) => {
+        const { id } = req.params;
+        const { status } = req.body;
+      
+        try {
+          const result = await postCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status } }
+          );
+      
+          if (result.modifiedCount === 1) {
+            res.send({ success: true, message: "Post status updated successfully" });
+          } else {
+            res.status(404).send({ success: false, message: "Post not found" });
+          }
+        } catch (error) {
+          console.error("Error updating post status:", error);
+          res.status(500).send({ success: false, error: "Internal Server Error" });
+        }
+      });
+      
+
       app.delete('/posts/:id', async (req, res) => {
         const id = req.params.id; 
         const query = { _id: new ObjectId(id) };
