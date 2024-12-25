@@ -1,7 +1,8 @@
 require('dotenv').config();
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const cors = require('cors');
-
+const cookieParser = require('cookie-parser');
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -11,6 +12,26 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json());
+app.use(cookieParser());
+
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.token;
+  // console.log(`token inside verifyToken`, token)
+  if(!token) {
+    return res.status(401).send({ message: 'Unauthorized Access' });
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if(err) {
+      return res.status(401).send({ message: 'Unauthorized Access' });
+    }
+    req.user = decoded;
+
+
+    next();
+  })
+}
+
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.oo5u4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -32,6 +53,28 @@ async function run() {
     const postCollection = client.db('Recoverly').collection("posts");
     const userCollection = client.db('Recoverly').collection("users");
     const recoveryCollection = client.db('Recoverly').collection("recoveries");
+
+    // auth related apis
+    app.post('/jwt', (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: '5h'});
+
+      res.cookie('token', token, {
+        httpOnly: true,
+        secure: false
+      })
+      .send({success: true})
+    })
+
+    app.post('/logout', (req, res) => {
+      res
+        .clearCookie('token', {
+          httpOnly: true,
+          secure: false
+        })
+        .send({success: true})
+    })
 
     // recoveries api
     app.post('/recoveries', async (req, res) => {
@@ -57,15 +100,37 @@ async function run() {
         const result = await postCollection.insertOne(newPost);
         res.send(result);
       });
+
+      
   
       app.get('/posts', async (req, res) => {
-        const cursor = postCollection.find();
-        const result = await cursor.toArray();
-        res.send(result);
-      });
+        const { title, location } = req.query;
+      
+        // Construct the query object dynamically
+        const query = {};
+        if (title) {
+          query.title = { $regex: title, $options: "i" }; 
+        }
+        if (location) {
+          query.location = { $regex: location, $options: "i" };
+        }
+      
+        try {
+          const cursor = postCollection.find(query);
+          const result = await cursor.toArray();
+          res.send(result);
+        } catch (error) {
+          console.error("Error fetching posts:", error);
+          res.status(500).send({ error: "Internal Server Error" });
+        }
 
-      app.get('/posts/:id', async (req, res) => {
+      });
+      
+
+      app.get('/posts/:id', verifyToken, async (req, res) => {
         const id = req.params.id;
+
+        // console.log('idk man',req.cookies?.token)
       
         // Validate if `id` is a valid ObjectId
         if (!ObjectId.isValid(id)) {
@@ -84,6 +149,36 @@ async function run() {
           res.status(500).send({ error: "Internal Server Error" });
         }
       });
+
+      app.put('/posts/:id', async (req, res) => {
+        const id = req.params.id;
+        const updatedPost = req.body;
+      
+        // Validate if `id` is a valid ObjectId
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ error: 'Invalid post ID' });
+        }
+      
+        try {
+          const query = { _id: new ObjectId(id) };
+          const update = {
+            $set: updatedPost, 
+          };
+      
+          const result = await postCollection.updateOne(query, update);
+      
+          if (result.modifiedCount > 0) {
+            res.send({ success: true, message: 'Post updated successfully' });
+          } else if (result.matchedCount > 0) {
+            res.send({ success: false, message: 'No changes made to the post' });
+          } else {
+            res.status(404).send({ success: false, message: 'Post not found' });
+          }
+        } catch (error) {
+          console.error("Error updating post:", error);
+          res.status(500).send({ error: "Internal Server Error" });
+        }
+      });      
 
       app.patch('/posts/:id', async (req, res) => {
         const { id } = req.params;
@@ -112,20 +207,6 @@ async function run() {
         const query = { _id: new ObjectId(id) };
         const result = await postCollection.deleteOne(query);
         res.send(result);
-      });
-
-      app.get('/posts/latest', async (req, res) => {
-        const limit = parseInt(req.query.limit) || 6; // Default to 6 posts
-        const sortOption = { date: -1 }; // Sort by most recent
-      
-        try {
-          const cursor = postCollection.find().sort(sortOption).limit(limit);
-          const result = await cursor.toArray();
-          res.send(result);
-        } catch (error) {
-          console.error("Error fetching latest posts:", error);
-          res.status(500).send({ error: "Internal Server Error" });
-        }
       });
       
 
