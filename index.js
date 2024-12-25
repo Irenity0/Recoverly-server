@@ -8,7 +8,7 @@ const port = process.env.PORT || 5000;
 
 app.use(cors({
     origin: [
-        'http://localhost:5173', 'https://recoverly-e17ce.web.app/', 'https://recoverly-e17ce.firebaseapp.com/'],
+        'http://localhost:5173', 'https://recoverly-e17ce.web.app', 'https://recoverly-e17ce.firebaseapp.com'],
     credentials: true
 }));
 app.use(express.json());
@@ -31,6 +31,14 @@ const verifyToken = (req, res, next) => {
     next();
   })
 }
+
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+};
+//localhost:5000 and localhost:5173 are treated as same site.  so sameSite value must be strict in development server.  in production sameSite will be none
+// in development server secure will false .  in production secure will be true
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -60,21 +68,17 @@ async function run() {
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: '5h'});
 
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: false
-      })
+      res.cookie('token', token, cookieOptions)
       .send({success: true})
     })
 
-    app.post('/logout', (req, res) => {
+    app.post("/logout", async (req, res) => {
+      const user = req.body;
+      console.log("logging out", user);
       res
-        .clearCookie('token', {
-          httpOnly: true,
-          secure: false
-        })
-        .send({success: true})
-    })
+        .clearCookie("token", { ...cookieOptions, maxAge: 0 })
+        .send({ success: true });
+    });
 
     // recoveries api
     app.post('/recoveries', async (req, res) => {
@@ -85,7 +89,8 @@ async function run() {
       res.send(result);
     });
 
-    app.get('/recoveries', async (req, res) => {
+    app.get('/recoveries', verifyToken, async (req, res) => {
+      console.log(`working`,req.cookies.token)
       const cursor = recoveryCollection.find();
       const result = await cursor.toArray();
       res.send(result);
@@ -93,44 +98,57 @@ async function run() {
 
 
     // posts api
-    app.post('/posts', async (req, res) => {
+    app.post('/posts', verifyToken, async (req, res) => {
         const newPost = req.body;
+        console.log(req.cookies.token)
         console.log('Adding new post', newPost)
   
         const result = await postCollection.insertOne(newPost);
         res.send(result);
       });
 
-      
-  
-      app.get('/posts', async (req, res) => {
+      app.get('/posts/public', async (req, res) => {
         const { title, location } = req.query;
-      
-        // Construct the query object dynamically
+    
         const query = {};
         if (title) {
-          query.title = { $regex: title, $options: "i" }; 
+            query.title = { $regex: title, $options: "i" };
         }
         if (location) {
-          query.location = { $regex: location, $options: "i" };
+            query.location = { $regex: location, $options: "i" };
         }
-      
+    
         try {
-          const cursor = postCollection.find(query);
-          const result = await cursor.toArray();
-          res.send(result);
+            const result = await postCollection.find(query).toArray();
+            res.send(result);
         } catch (error) {
-          console.error("Error fetching posts:", error);
-          res.status(500).send({ error: "Internal Server Error" });
+            console.error("Error fetching public posts:", error);
+            res.status(500).send({ error: "Internal Server Error" });
         }
+    });
 
-      });
+      
+  
+    app.get('/posts', verifyToken, async (req, res) => {
+      const query = { user: req.user?.user }; // Filter by the authenticated user
+    
+      try {
+        const result = await postCollection.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching private posts:", error);
+        res.status(500).send({ error: "Internal Server Error" });
+      }
+    });
+    
+    
+
       
 
       app.get('/posts/:id', verifyToken, async (req, res) => {
         const id = req.params.id;
 
-        // console.log('idk man',req.cookies?.token)
+        console.log('idk man',req.cookies?.token)
       
         // Validate if `id` is a valid ObjectId
         if (!ObjectId.isValid(id)) {
@@ -150,7 +168,8 @@ async function run() {
         }
       });
 
-      app.put('/posts/:id', async (req, res) => {
+      app.put('/posts/:id', verifyToken, async (req, res) => {
+        // console.log("update", req.cookies.token)
         const id = req.params.id;
         const updatedPost = req.body;
       
@@ -202,7 +221,7 @@ async function run() {
       });
       
 
-      app.delete('/posts/:id', async (req, res) => {
+      app.delete('/posts/:id',  async (req, res) => {
         const id = req.params.id; 
         const query = { _id: new ObjectId(id) };
         const result = await postCollection.deleteOne(query);
@@ -217,14 +236,8 @@ async function run() {
         const result = await userCollection.insertOne(newUser);
         res.send(result);
       });
-  
-      app.get('/users', async (req, res) => {
-        const cursor = userCollection.find();
-        const result = await cursor.toArray();
-        res.send(result);
-      });
 
-      app.get('/users/:email', async (req, res) => {
+      app.get('/users/:email', verifyToken, async (req, res) => {
         const email = req.params.email;
         const query = { email: email };
         const user = await userCollection.findOne(query);
